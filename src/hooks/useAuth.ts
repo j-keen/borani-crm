@@ -3,11 +3,41 @@ import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
 import type { User } from '../types';
 
+// users 테이블에서 프로필 조회, 없으면 자동 생성
+async function getOrCreateProfile(authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }): Promise<User | null> {
+  // 1. 기존 프로필 조회
+  const { data } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', authUser.id)
+    .maybeSingle();
+
+  if (data) return data as User;
+
+  // 2. 프로필이 없으면 생성 (트리거 실패 대비)
+  const { data: created, error } = await supabase
+    .from('users')
+    .insert({
+      id: authUser.id,
+      email: authUser.email || '',
+      name: (authUser.user_metadata?.name as string) || authUser.email?.split('@')[0] || '사용자',
+      role: 'staff',
+      view_scope: 'own',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('프로필 생성 실패:', error);
+    return null;
+  }
+  return created as User;
+}
+
 export function useAuth() {
   const { currentUser, setCurrentUser, setUsers, setStatusOptions, setCustomFields } = useAppStore();
   const [loading, setLoading] = useState(true);
 
-  // 앱 초기 데이터 로드 (상태옵션, 커스텀필드, 사용자 목록)
   const loadAppData = useCallback(async () => {
     const [statusRes, fieldsRes, usersRes] = await Promise.all([
       supabase.from('status_options').select('*').order('sort_order'),
@@ -19,19 +49,14 @@ export function useAuth() {
     if (usersRes.data) setUsers(usersRes.data);
   }, [setStatusOptions, setCustomFields, setUsers]);
 
-  // 세션 체크 및 유저 프로필 로드
   useEffect(() => {
     const init = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          const { data } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          if (data) {
-            setCurrentUser(data as User);
+          const profile = await getOrCreateProfile(session.user);
+          if (profile) {
+            setCurrentUser(profile);
             await loadAppData();
           }
         }
@@ -46,13 +71,9 @@ export function useAuth() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       try {
         if (session?.user) {
-          const { data } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          if (data) {
-            setCurrentUser(data as User);
+          const profile = await getOrCreateProfile(session.user);
+          if (profile) {
+            setCurrentUser(profile);
             await loadAppData();
           }
         } else {

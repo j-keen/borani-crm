@@ -19,7 +19,13 @@ export const supabase = createClient(
       detectSessionInUrl: isSupabaseConfigured,
     },
     global: {
-      fetch: (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(10000) }),
+      fetch: (url, options) => {
+        const timeout = AbortSignal.timeout(10000);
+        const signal = options?.signal
+          ? AbortSignal.any([options.signal, timeout])
+          : timeout;
+        return fetch(url, { ...options, signal });
+      },
     },
   }
 );

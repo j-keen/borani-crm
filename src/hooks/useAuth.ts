@@ -3,7 +3,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
 import type { User } from '../types';
 
-const AUTH_TIMEOUT_MS = 8000;
+const AUTH_TIMEOUT_MS = 15000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -64,10 +64,10 @@ export function useAuth() {
   useEffect(() => {
     const safety = setTimeout(() => {
       setLoading((prev) => {
-        if (prev) console.error('Auth 안전 타임아웃 도달 (12초) — 로그인 화면으로 이동');
+        if (prev) console.error('Auth 안전 타임아웃 도달 (20초) — 로그인 화면으로 이동');
         return false;
       });
-    }, 12000);
+    }, 20000);
     return () => clearTimeout(safety);
   }, []);
 
@@ -98,11 +98,16 @@ export function useAuth() {
           if (aborted) return;
           if (profile) {
             setCurrentUser(profile);
-            await withTimeout(loadAppData(), AUTH_TIMEOUT_MS, '앱 데이터 로딩');
+            if (!aborted) setLoading(false);
+            // 앱 데이터는 백그라운드 로드 → 화면 즉시 표시
+            loadAppData().catch(e => console.error('앱 데이터 로딩 실패:', e));
+            return;
           }
         }
       } catch (e) {
         console.error('Auth 초기화 실패:', e);
+        // 세션 타임아웃 시 stale 세션 정리 → 다음 로드에서 깨끗한 시작
+        try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
       } finally {
         if (!aborted) setLoading(false);
       }

@@ -11,5 +11,15 @@ if (!isSupabaseConfigured) {
 
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder'
+  supabaseAnonKey || 'placeholder',
+  {
+    auth: {
+      autoRefreshToken: isSupabaseConfigured,
+      persistSession: isSupabaseConfigured,
+      detectSessionInUrl: isSupabaseConfigured,
+    },
+    global: {
+      fetch: (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(10000) }),
+    },
+  }
 );

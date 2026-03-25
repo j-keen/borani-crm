@@ -10,7 +10,7 @@ import { PermissionGuard } from './components/PermissionGuard';
 import { LoadingSpinner } from './components/ui/LoadingSpinner';
 
 function AppRoutes() {
-  const { currentUser, loading, signOut } = useAuth();
+  const { currentUser, loading, signIn, signUp, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -21,7 +21,7 @@ function AppRoutes() {
   }
 
   if (!currentUser) {
-    return <LoginPage />;
+    return <LoginPage signIn={signIn} signUp={signUp} />;
   }
 
   return (

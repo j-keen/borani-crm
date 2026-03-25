@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
 import type { User } from '../types';
 
@@ -50,12 +50,12 @@ export function useAuth() {
   }, [setStatusOptions, setCustomFields, setUsers]);
 
   useEffect(() => {
-    let didTimeout = false;
-    const timeout = setTimeout(() => {
-      didTimeout = true;
-      console.warn('Auth 초기화 타임아웃 (5초)');
+    // 환경변수 미설정 시 즉시 로그인 화면 표시
+    if (!isSupabaseConfigured) {
+      console.error('Supabase 환경변수 미설정 — 로그인 화면으로 이동');
       setLoading(false);
-    }, 5000);
+      return;
+    }
 
     const init = async () => {
       try {
@@ -70,8 +70,7 @@ export function useAuth() {
       } catch (e) {
         console.error('Auth 초기화 실패:', e);
       } finally {
-        clearTimeout(timeout);
-        if (!didTimeout) setLoading(false);
+        setLoading(false);
       }
     };
     init();

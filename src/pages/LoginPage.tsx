@@ -17,11 +17,22 @@ export function LoginPage() {
 
     if (isSignUp) {
       const { error } = await signUp(email, password, name);
-      if (error) setError(error.message);
-      // 이메일 인증 비활성화 시 가입 즉시 자동 로그인됨 (onAuthStateChange가 처리)
+      if (error) {
+        if (error.message.includes('already registered')) {
+          setError('이미 등록된 이메일입니다. 로그인을 시도해주세요.');
+        } else {
+          setError(error.message);
+        }
+      }
     } else {
       const { error } = await signIn(email, password);
-      if (error) setError('이메일 또는 비밀번호가 올바르지 않습니다.');
+      if (error) {
+        if (error.status === 422 || error.message.includes('Invalid')) {
+          setError('이메일 또는 비밀번호가 올바르지 않습니다.');
+        } else {
+          setError(error.message);
+        }
+      }
     }
     setLoading(false);
   };

@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { StatusBadge } from './ui/StatusBadge';
@@ -7,17 +6,17 @@ import type { Customer } from '../types';
 
 interface Props {
   customer: Customer;
+  onClick?: () => void;
 }
 
 // 고객 카드 컴포넌트 - 모바일 리스트에서 사용
-export function CustomerCard({ customer }: Props) {
-  const navigate = useNavigate();
+export function CustomerCard({ customer, onClick }: Props) {
   const users = useAppStore((s) => s.users);
   const assignedUser = users.find((u) => u.id === customer.assigned_to);
 
   return (
     <div
-      onClick={() => navigate(`/customers/${customer.id}`)}
+      onClick={onClick}
       className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer"
     >
       <div className="flex items-center justify-between mb-2">

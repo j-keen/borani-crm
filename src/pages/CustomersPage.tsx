@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { supabase } from '../lib/supabase';
@@ -7,13 +7,13 @@ import { useAppStore } from '../store/appStore';
 import { usePermission } from '../hooks/usePermission';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { CustomerCard } from '../components/CustomerCard';
+import { CustomerDetailModal } from '../components/CustomerDetailModal';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import type { Customer } from '../types';
 
 export function CustomersPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { statusOptions, users, customFields } = useAppStore();
   const { can } = usePermission();
@@ -27,6 +27,9 @@ export function CustomersPage() {
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  // 고객 상세 모달
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
   // 신규 고객 모달
   const [showAddModal, setShowAddModal] = useState(false);
@@ -194,7 +197,7 @@ export function CustomersPage() {
                   return (
                     <tr
                       key={c.id}
-                      onClick={() => navigate(`/customers/${c.id}`)}
+                      onClick={() => setSelectedCustomerId(c.id)}
                       className="border-b border-gray-100 hover:bg-indigo-50/50 cursor-pointer transition-colors"
                     >
                       <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
@@ -215,7 +218,7 @@ export function CustomersPage() {
           {/* 모바일: 카드 리스트 */}
           <div className="md:hidden grid gap-3">
             {filtered.map((c) => (
-              <CustomerCard key={c.id} customer={c} />
+              <CustomerCard key={c.id} customer={c} onClick={() => setSelectedCustomerId(c.id)} />
             ))}
           </div>
         </>
@@ -345,6 +348,15 @@ export function CustomersPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* 고객 상세 모달 */}
+      {selectedCustomerId && (
+        <CustomerDetailModal
+          customerId={selectedCustomerId}
+          onClose={() => setSelectedCustomerId(null)}
+          onDeleted={loadCustomers}
+        />
       )}
     </div>
   );

@@ -33,6 +33,20 @@ export function CustomersPage() {
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '', assigned_to: '', status_id: '', extra_fields: {} as Record<string, string> });
   const [saving, setSaving] = useState(false);
 
+  const formatPhoneNumber = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.startsWith('02')) {
+      // 서울 지역번호: 02-XXXX-XXXX
+      if (numbers.length <= 2) return numbers;
+      if (numbers.length <= 6) return `${numbers.slice(0, 2)}-${numbers.slice(2)}`;
+      return `${numbers.slice(0, 2)}-${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`;
+    }
+    // 휴대폰/기타: 010-XXXX-XXXX, 031-XXX-XXXX
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 7) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+  };
+
   const loadCustomers = async () => {
     setLoading(true);
     setError(false);
@@ -228,9 +242,10 @@ export function CustomersPage() {
                 <input
                   type="tel"
                   value={newCustomer.phone}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, phone: formatPhoneNumber(e.target.value) })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-                  placeholder="010-0000-0000"
+                  placeholder="01000000000"
+                  maxLength={13}
                 />
               </div>
               <div>

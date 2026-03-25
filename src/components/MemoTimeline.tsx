@@ -23,6 +23,7 @@ export function MemoTimeline({ customerId }: Props) {
   const [loading, setLoading] = useState(true);
   const [newMemo, setNewMemo] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showMemoModal, setShowMemoModal] = useState(false);
 
   const loadTimeline = async () => {
     setLoading(true);
@@ -74,6 +75,7 @@ export function MemoTimeline({ customerId }: Props) {
     });
     setNewMemo('');
     setSubmitting(false);
+    setShowMemoModal(false);
     loadTimeline();
   };
 
@@ -83,24 +85,49 @@ export function MemoTimeline({ customerId }: Props) {
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-gray-900">상담 이력</h3>
 
-      {/* 메모 작성 폼 */}
+      {/* 메모 작성 버튼 */}
       {can('write_memo') && (
-        <form onSubmit={handleSubmitMemo} className="space-y-2">
-          <textarea
-            value={newMemo}
-            onChange={(e) => setNewMemo(e.target.value)}
-            placeholder="상담 메모를 입력하세요..."
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-          />
-          <button
-            type="submit"
-            disabled={submitting || !newMemo.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? '저장 중...' : '메모 저장'}
-          </button>
-        </form>
+        <button
+          onClick={() => setShowMemoModal(true)}
+          className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+        >
+          + 메모 작성
+        </button>
+      )}
+
+      {/* 메모 작성 모달 */}
+      {showMemoModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowMemoModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">메모 작성</h2>
+            <form onSubmit={handleSubmitMemo} className="space-y-4">
+              <textarea
+                value={newMemo}
+                onChange={(e) => setNewMemo(e.target.value)}
+                placeholder="상담 메모를 입력하세요..."
+                rows={5}
+                autoFocus
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+              />
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={submitting || !newMemo.trim()}
+                  className="flex-1 py-2 px-4 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? '저장 중...' : '저장'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowMemoModal(false); setNewMemo(''); }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                >
+                  취소
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* 타임라인 */}

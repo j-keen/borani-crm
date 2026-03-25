@@ -10,6 +10,8 @@ import { usePermission } from '../hooks/usePermission';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { CustomerCard } from '../components/CustomerCard';
 import { CustomerDetailModal } from '../components/CustomerDetailModal';
+import { CustomerDynamicTable } from '../components/CustomerDynamicTable';
+import { ColumnSetting } from '../lib/api/userSettings';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
@@ -105,6 +107,54 @@ export function CustomersPage() {
       return true;
     });
   }, [customers, search, statusFilter, providerFilter, assigneeFilter]);
+
+  const baseColumns: ColumnSetting[] = useMemo(() => {
+    const cols: ColumnSetting[] = [
+      { id: 'name', label: '이름', visible: true, width: 120, order: 0 },
+      { id: 'phone', label: '연락처', visible: true, width: 140, order: 1 },
+      { id: 'email', label: '이메일', visible: true, width: 180, order: 2 },
+      { id: 'assigned_to', label: '담당자', visible: true, width: 100, order: 3 },
+      { id: 'status_id', label: '상태', visible: true, width: 120, order: 4 },
+      { id: 'provider_id', label: '통신사', visible: true, width: 100, order: 5 },
+      { id: 'plan_id', label: '요금제', visible: true, width: 140, order: 6 },
+      { id: 'tv_id', label: 'TV옵션', visible: true, width: 120, order: 7 },
+      { id: 'speed_id', label: '인터넷속도', visible: true, width: 120, order: 8 },
+    ];
+    let order = 9;
+    options.filter(o => o.category_code === 'addon' && o.is_active).forEach(o => {
+      cols.push({ id: `addon_${o.id}`, label: o.label, visible: true, width: 100, order: order++ });
+    });
+    customFields.filter(f => f.is_active).forEach(f => {
+      cols.push({ id: `custom_${f.field_key}`, label: f.field_label, visible: true, width: 150, order: order++ });
+    });
+    cols.push({ id: 'created_at', label: '등록일', visible: true, width: 120, order: order++ });
+    return cols;
+  }, [options, customFields]);
+
+  const renderCell = (columnId: string, row: Customer) => {
+    switch (columnId) {
+      case 'name': return <span className="font-medium text-gray-900">{row.name}</span>;
+      case 'phone': return row.phone;
+      case 'email': return row.email;
+      case 'assigned_to': return users.find((u) => u.id === row.assigned_to)?.name;
+      case 'status_id': return <StatusBadge statusId={row.status_id} />;
+      case 'provider_id': return options.find((o) => o.id === row.provider_id)?.label;
+      case 'plan_id': return options.find((o) => o.id === row.plan_id)?.label;
+      case 'tv_id': return options.find((o) => o.id === row.tv_id)?.label;
+      case 'speed_id': return options.find((o) => o.id === row.speed_id)?.label;
+      case 'created_at': return format(new Date(row.created_at), 'yyyy.MM.dd', { locale: ko });
+      default:
+        if (columnId.startsWith('addon_')) {
+          const addonId = columnId.replace('addon_', '');
+          return row.addons_json?.includes(addonId) ? 'O' : '-';
+        }
+        if (columnId.startsWith('custom_')) {
+          const fieldKey = columnId.replace('custom_', '');
+          return row.extra_fields?.[fieldKey];
+        }
+        return '-';
+    }
+  };
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,41 +255,15 @@ export function CustomersPage() {
         />
       ) : (
         <>
-          {/* 데스크톱: 테이블 */}
-          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">이름</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">연락처</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">이메일</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">담당자</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">상태</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">등록일</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((c) => {
-                  const assignedUser = users.find((u) => u.id === c.assigned_to);
-                  return (
-                    <tr
-                      key={c.id}
-                      onClick={() => setSelectedCustomerId(c.id)}
-                      className="border-b border-gray-100 hover:bg-indigo-50/50 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
-                      <td className="px-4 py-3 text-gray-600">{c.phone || '-'}</td>
-                      <td className="px-4 py-3 text-gray-600">{c.email || '-'}</td>
-                      <td className="px-4 py-3 text-gray-600">{assignedUser?.name || '-'}</td>
-                      <td className="px-4 py-3"><StatusBadge statusId={c.status_id} /></td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {format(new Date(c.created_at), 'yyyy.MM.dd', { locale: ko })}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {/* 데스크톱: 동적 테이블 교체 */}
+          <div className="hidden md:block w-full">
+             <CustomerDynamicTable 
+               data={filtered} 
+               baseColumns={baseColumns} 
+               pageKey="customers" 
+               onRowClick={setSelectedCustomerId} 
+               renderCell={renderCell} 
+             />
           </div>
 
           {/* 모바일: 카드 리스트 */}

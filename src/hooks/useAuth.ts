@@ -22,35 +22,44 @@ export function useAuth() {
   // 세션 체크 및 유저 프로필 로드
   useEffect(() => {
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        if (data) {
-          setCurrentUser(data as User);
-          await loadAppData();
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          if (data) {
+            setCurrentUser(data as User);
+            await loadAppData();
+          }
         }
+      } catch (e) {
+        console.error('Auth 초기화 실패:', e);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     init();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const { data } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        if (data) {
-          setCurrentUser(data as User);
-          await loadAppData();
+      try {
+        if (session?.user) {
+          const { data } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          if (data) {
+            setCurrentUser(data as User);
+            await loadAppData();
+          }
+        } else {
+          setCurrentUser(null);
         }
-      } else {
-        setCurrentUser(null);
+      } catch (e) {
+        console.error('Auth 상태 변경 처리 실패:', e);
       }
     });
 

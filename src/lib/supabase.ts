@@ -5,27 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
 
-if (!isSupabaseConfigured) {
-  console.error('Supabase 환경변수 미설정: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY를 확인하세요.');
-}
-
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseAnonKey || 'placeholder',
-  {
-    auth: {
-      autoRefreshToken: isSupabaseConfigured,
-      persistSession: isSupabaseConfigured,
-      detectSessionInUrl: isSupabaseConfigured,
-    },
-    global: {
-      fetch: (url, options) => {
-        const timeout = AbortSignal.timeout(10000);
-        const signal = options?.signal
-          ? AbortSignal.any([options.signal, timeout])
-          : timeout;
-        return fetch(url, { ...options, signal });
-      },
-    },
-  }
 );

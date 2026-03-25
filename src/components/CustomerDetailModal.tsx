@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
+import { useStatusStore } from '../store/useStatusStore';
 import { usePermission } from '../hooks/usePermission';
 import { StatusBadge } from './ui/StatusBadge';
 import { MemoTimeline } from './MemoTimeline';
@@ -15,8 +16,9 @@ interface Props {
 }
 
 export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
-  const { statusOptions, users, customFields } = useAppStore();
-  const { can, currentUser } = usePermission();
+  const { users, customFields } = useAppStore();
+  const { items: statusOptions } = useStatusStore();
+  const { currentUser } = usePermission();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,7 +26,7 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
-    name: '', phone: '', email: '', assigned_to: '', status_id: '',
+    name: '', phone: '', email: '', assigned_to: '', status_id: '', option_id: '',
     extra_fields: {} as Record<string, string>,
   });
 
@@ -44,6 +46,7 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
         email: data.email || '',
         assigned_to: data.assigned_to || '',
         status_id: data.status_id || '',
+        option_id: data.option_id || '',
         extra_fields: (data.extra_fields || {}) as Record<string, string>,
       });
     }
@@ -68,11 +71,13 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
     if (!customer || !currentUser) return;
     setSaving(true);
 
-    if (form.status_id !== customer.status_id) {
+    if (form.status_id !== customer.status_id || form.option_id !== customer.option_id) {
       await supabase.from('status_history').insert({
         customer_id: customer.id,
         from_status_id: customer.status_id,
         to_status_id: form.status_id || null,
+        from_option_id: customer.option_id || null,
+        to_option_id: form.option_id || null,
         changed_by: currentUser.id,
       });
     }
@@ -85,6 +90,7 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
         email: form.email || null,
         assigned_to: form.assigned_to || null,
         status_id: form.status_id || null,
+        option_id: form.option_id || null,
         extra_fields: form.extra_fields,
       })
       .eq('id', customer.id);
@@ -128,7 +134,7 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <div className="flex items-center gap-3">
                 <h2 className="text-xl font-bold text-gray-900">{customer.name}</h2>
-                <StatusBadge statusId={customer.status_id} />
+                <StatusBadge statusId={customer.status_id} optionId={customer.option_id} />
               </div>
               <div className="flex items-center gap-2">
                 <PermissionGuard action="edit">
@@ -212,15 +218,31 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
                       <label className="block text-xs font-medium text-gray-500 mb-1">상태</label>
                       <select
                         value={form.status_id}
-                        onChange={(e) => setForm({ ...form, status_id: e.target.value })}
+                        onChange={(e) => setForm({ ...form, status_id: e.target.value, option_id: '' })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="">미지정</option>
-                        {statusOptions.filter((s) => s.is_active).map((s) => (
+                        {statusOptions.filter((s) => s.is_active && !s.parent_id).map((s) => (
                           <option key={s.id} value={s.id}>{s.label}</option>
                         ))}
                       </select>
                     </div>
+
+                    {form.status_id && statusOptions.some(s => s.parent_id === form.status_id && s.is_active) && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">상세 옵션</label>
+                        <select
+                          value={form.option_id}
+                          onChange={(e) => setForm({ ...form, option_id: e.target.value })}
+                          className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                        >
+                          <option value="">옵션 선택</option>
+                          {statusOptions.filter((s) => s.is_active && s.parent_id === form.status_id).map((s) => (
+                            <option key={s.id} value={s.id}>{s.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
                     {customFields.filter((f) => f.is_active).map((field) => (
                       <div key={field.id}>

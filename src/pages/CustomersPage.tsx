@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
+import { useStatusStore } from '../store/useStatusStore';
 import { usePermission } from '../hooks/usePermission';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { CustomerCard } from '../components/CustomerCard';
@@ -15,7 +16,8 @@ import type { Customer } from '../types';
 
 export function CustomersPage() {
   const [searchParams] = useSearchParams();
-  const { statusOptions, users, customFields } = useAppStore();
+  const { users, customFields } = useAppStore();
+  const { items: statusOptions } = useStatusStore();
   const { can } = usePermission();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -25,6 +27,7 @@ export function CustomersPage() {
   // 필터 상태
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
+  const [optionFilter, setOptionFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
@@ -33,7 +36,7 @@ export function CustomersPage() {
 
   // 신규 고객 모달
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '', assigned_to: '', status_id: '', extra_fields: {} as Record<string, string> });
+  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '', assigned_to: '', status_id: '', option_id: '', extra_fields: {} as Record<string, string> });
   const [saving, setSaving] = useState(false);
 
   const formatPhoneNumber = (value: string) => {
@@ -88,11 +91,13 @@ export function CustomersPage() {
       }
       // 상태 필터
       if (statusFilter && c.status_id !== statusFilter) return false;
+      // 상세 옵션 필터
+      if (optionFilter && c.option_id !== optionFilter) return false;
       // 담당자 필터
       if (assigneeFilter && c.assigned_to !== assigneeFilter) return false;
       return true;
     });
-  }, [customers, search, statusFilter, assigneeFilter]);
+  }, [customers, search, statusFilter, optionFilter, assigneeFilter]);
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,13 +107,14 @@ export function CustomersPage() {
       phone: newCustomer.phone || null,
       email: newCustomer.email || null,
       assigned_to: newCustomer.assigned_to || null,
-      status_id: newCustomer.status_id || statusOptions[0]?.id || null,
+      status_id: newCustomer.status_id || statusOptions.find(s => !s.parent_id)?.id || null,
+      option_id: newCustomer.option_id || null,
       extra_fields: newCustomer.extra_fields,
     });
     setSaving(false);
     if (!error) {
       setShowAddModal(false);
-      setNewCustomer({ name: '', phone: '', email: '', assigned_to: '', status_id: '', extra_fields: {} });
+      setNewCustomer({ name: '', phone: '', email: '', assigned_to: '', status_id: '', option_id: '', extra_fields: {} });
       loadCustomers();
     }
   };
@@ -142,14 +148,26 @@ export function CustomersPage() {
         />
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); setOptionFilter(''); }}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
         >
           <option value="">전체 상태</option>
-          {statusOptions.filter((s) => s.is_active).map((s) => (
+          {statusOptions.filter((s) => s.is_active && !s.parent_id).map((s) => (
             <option key={s.id} value={s.id}>{s.label}</option>
           ))}
         </select>
+        {statusFilter && statusOptions.some(s => s.parent_id === statusFilter && s.is_active) && (
+          <select
+            value={optionFilter}
+            onChange={(e) => setOptionFilter(e.target.value)}
+            className="px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50 sm:w-32"
+          >
+            <option value="">전체 옵션</option>
+            {statusOptions.filter((s) => s.is_active && s.parent_id === statusFilter).map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
+            ))}
+          </select>
+        )}
         <select
           value={assigneeFilter}
           onChange={(e) => setAssigneeFilter(e.target.value)}
@@ -204,7 +222,7 @@ export function CustomersPage() {
                       <td className="px-4 py-3 text-gray-600">{c.phone || '-'}</td>
                       <td className="px-4 py-3 text-gray-600">{c.email || '-'}</td>
                       <td className="px-4 py-3 text-gray-600">{assignedUser?.name || '-'}</td>
-                      <td className="px-4 py-3"><StatusBadge statusId={c.status_id} /></td>
+                      <td className="px-4 py-3"><StatusBadge statusId={c.status_id} optionId={c.option_id} /></td>
                       <td className="px-4 py-3 text-gray-500">
                         {format(new Date(c.created_at), 'yyyy.MM.dd', { locale: ko })}
                       </td>
@@ -277,15 +295,31 @@ export function CustomersPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">상태</label>
                 <select
                   value={newCustomer.status_id}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, status_id: e.target.value })}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, status_id: e.target.value, option_id: '' })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">선택</option>
-                  {statusOptions.filter((s) => s.is_active).map((s) => (
+                  {statusOptions.filter((s) => s.is_active && !s.parent_id).map((s) => (
                     <option key={s.id} value={s.id}>{s.label}</option>
                   ))}
                 </select>
               </div>
+
+              {newCustomer.status_id && statusOptions.some(s => s.parent_id === newCustomer.status_id && s.is_active) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">상세 옵션</label>
+                  <select
+                    value={newCustomer.option_id}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, option_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                  >
+                    <option value="">옵션 선택</option>
+                    {statusOptions.filter((s) => s.is_active && s.parent_id === newCustomer.status_id).map((s) => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* 동적 필드 */}
               {customFields.filter((f) => f.is_active).map((field) => (

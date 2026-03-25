@@ -21,7 +21,7 @@ export function CustomerCard({ customer, onClick }: Props) {
     >
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold text-gray-900">{customer.name}</h3>
-        <StatusBadge statusId={customer.status_id} />
+        <StatusBadge statusId={customer.status_id} optionId={customer.option_id} />
       </div>
       <div className="space-y-1 text-sm text-gray-500">
         {customer.phone && <p>📞 {customer.phone}</p>}

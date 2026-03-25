@@ -17,6 +17,7 @@ export interface User {
 
 export interface StatusOption {
   id: string;
+  parent_id: string | null;
   label: string;
   color: string;
   sort_order: number;
@@ -42,12 +43,14 @@ export interface Customer {
   email: string | null;
   assigned_to: string | null;
   status_id: string | null;
+  option_id: string | null;
   extra_fields: Record<string, string | number | null>;
   created_at: string;
   updated_at: string;
   // 조인된 필드
   assigned_user?: User;
   status?: StatusOption;
+  option?: StatusOption;
 }
 
 export interface Memo {

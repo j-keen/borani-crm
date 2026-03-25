@@ -1,66 +1,17 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
-import { useAuth } from '../hooks/useAuth';
-import type { StatusOption, CustomField, User, Role, ViewScope } from '../types';
+import { StatusManager } from '../components/admin/StatusManager';
+import type { CustomField, Role, ViewScope } from '../types';
 
 type Tab = 'fields' | 'statuses' | 'accounts';
 
 export function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('statuses');
-  const { statusOptions, customFields, users, setStatusOptions, setCustomFields, setUsers } = useAppStore();
-  const { loadAppData } = useAuth();
+  const { customFields, users, setCustomFields, setUsers } = useAppStore();
 
   // ===================== 상태값 관리 =====================
-  const [newStatus, setNewStatus] = useState({ label: '', color: '#6B7280' });
-  const [editingStatus, setEditingStatus] = useState<StatusOption | null>(null);
-
-  const handleAddStatus = async () => {
-    if (!newStatus.label.trim()) return;
-    const maxOrder = Math.max(0, ...statusOptions.map((s) => s.sort_order));
-    const { data } = await supabase.from('status_options').insert({
-      label: newStatus.label.trim(),
-      color: newStatus.color,
-      sort_order: maxOrder + 1,
-    }).select().single();
-    if (data) {
-      setStatusOptions([...statusOptions, data]);
-      setNewStatus({ label: '', color: '#6B7280' });
-    }
-  };
-
-  const handleUpdateStatus = async (status: StatusOption) => {
-    await supabase.from('status_options').update({
-      label: status.label,
-      color: status.color,
-      sort_order: status.sort_order,
-      is_active: status.is_active,
-    }).eq('id', status.id);
-    setStatusOptions(statusOptions.map((s) => (s.id === status.id ? status : s)));
-    setEditingStatus(null);
-  };
-
-  const handleDeleteStatus = async (id: string) => {
-    if (!window.confirm('이 상태값을 삭제하시겠습니까?')) return;
-    await supabase.from('status_options').delete().eq('id', id);
-    setStatusOptions(statusOptions.filter((s) => s.id !== id));
-  };
-
-  const moveStatus = async (index: number, direction: -1 | 1) => {
-    const sorted = [...statusOptions].sort((a, b) => a.sort_order - b.sort_order);
-    const targetIdx = index + direction;
-    if (targetIdx < 0 || targetIdx >= sorted.length) return;
-
-    const temp = sorted[index].sort_order;
-    sorted[index].sort_order = sorted[targetIdx].sort_order;
-    sorted[targetIdx].sort_order = temp;
-
-    await Promise.all([
-      supabase.from('status_options').update({ sort_order: sorted[index].sort_order }).eq('id', sorted[index].id),
-      supabase.from('status_options').update({ sort_order: sorted[targetIdx].sort_order }).eq('id', sorted[targetIdx].id),
-    ]);
-    setStatusOptions([...sorted]);
-  };
+  // 상태관리는 StatusManager 컴포넌트로 분리되었습니다.
 
   // ===================== 커스텀 필드 관리 =====================
   const [newField, setNewField] = useState({ field_label: '', field_key: '', field_type: 'text' as CustomField['field_type'] });
@@ -139,83 +90,9 @@ export function AdminSettingsPage() {
       {/* ===== 상태값 관리 탭 ===== */}
       {activeTab === 'statuses' && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">상태값 관리</h2>
-          <p className="text-sm text-gray-500">고객 진행 상태를 추가/수정/삭제하고 순서를 변경할 수 있습니다.</p>
-
-          {/* 새 상태 추가 */}
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-500 mb-1">상태명</label>
-              <input
-                type="text"
-                value={newStatus.label}
-                onChange={(e) => setNewStatus({ ...newStatus, label: e.target.value })}
-                placeholder="새 상태값"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">색상</label>
-              <input
-                type="color"
-                value={newStatus.color}
-                onChange={(e) => setNewStatus({ ...newStatus, color: e.target.value })}
-                className="w-10 h-9 border border-gray-300 rounded-lg cursor-pointer"
-              />
-            </div>
-            <button
-              onClick={handleAddStatus}
-              disabled={!newStatus.label.trim()}
-              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-            >
-              추가
-            </button>
-          </div>
-
-          {/* 상태 목록 */}
-          <div className="space-y-2">
-            {[...statusOptions].sort((a, b) => a.sort_order - b.sort_order).map((status, idx) => (
-              <div key={status.id} className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:bg-gray-50">
-                {editingStatus?.id === status.id ? (
-                  <>
-                    <input
-                      type="text"
-                      value={editingStatus.label}
-                      onChange={(e) => setEditingStatus({ ...editingStatus, label: e.target.value })}
-                      className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                    />
-                    <input
-                      type="color"
-                      value={editingStatus.color}
-                      onChange={(e) => setEditingStatus({ ...editingStatus, color: e.target.value })}
-                      className="w-8 h-7 border border-gray-300 rounded cursor-pointer"
-                    />
-                    <button onClick={() => handleUpdateStatus(editingStatus)} className="text-xs text-green-600 hover:text-green-700 font-medium">저장</button>
-                    <button onClick={() => setEditingStatus(null)} className="text-xs text-gray-500 hover:text-gray-700">취소</button>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: status.color }} />
-                    <span className={`flex-1 text-sm ${status.is_active ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
-                      {status.label}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => moveStatus(idx, -1)} className="p-1 text-gray-400 hover:text-gray-600" title="위로">↑</button>
-                      <button onClick={() => moveStatus(idx, 1)} className="p-1 text-gray-400 hover:text-gray-600" title="아래로">↓</button>
-                      <button onClick={() => setEditingStatus({ ...status })} className="p-1 text-blue-500 hover:text-blue-700 text-xs">수정</button>
-                      <button
-                        onClick={() => handleUpdateStatus({ ...status, is_active: !status.is_active })}
-                        className={`p-1 text-xs ${status.is_active ? 'text-amber-500' : 'text-green-500'}`}
-                      >
-                        {status.is_active ? '비활성화' : '활성화'}
-                      </button>
-                      <button onClick={() => handleDeleteStatus(status.id)} className="p-1 text-red-400 hover:text-red-600 text-xs">삭제</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+          <h2 className="text-lg font-semibold text-gray-900">상태 & 옵션 관리</h2>
+          <p className="text-sm text-gray-500">고객의 진행 상태(대분류) 및 하위 옵션(중분류)을 설정합니다.</p>
+          <StatusManager />
         </div>
       )}
 

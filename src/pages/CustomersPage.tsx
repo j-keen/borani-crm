@@ -5,6 +5,7 @@ import { ko } from 'date-fns/locale';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
 import { useStatusStore } from '../store/useStatusStore';
+import { useOptions } from '../hooks/useOptions';
 import { usePermission } from '../hooks/usePermission';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { CustomerCard } from '../components/CustomerCard';
@@ -18,6 +19,7 @@ export function CustomersPage() {
   const [searchParams] = useSearchParams();
   const { users, customFields } = useAppStore();
   const { items: statusOptions } = useStatusStore();
+  const { items: options, fetchOptions } = useOptions();
   const { can } = usePermission();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -27,7 +29,7 @@ export function CustomersPage() {
   // 필터 상태
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
-  const [optionFilter, setOptionFilter] = useState('');
+  const [providerFilter, setProviderFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
@@ -36,7 +38,11 @@ export function CustomersPage() {
 
   // 신규 고객 모달
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '', assigned_to: '', status_id: '', option_id: '', extra_fields: {} as Record<string, string> });
+  const [newCustomer, setNewCustomer] = useState({ 
+    name: '', phone: '', email: '', assigned_to: '', status_id: '', 
+    provider_id: '', plan_id: '', tv_id: '', speed_id: '', addons_json: [] as string[],
+    extra_fields: {} as Record<string, string> 
+  });
   const [saving, setSaving] = useState(false);
 
   const formatPhoneNumber = (value: string) => {
@@ -71,6 +77,7 @@ export function CustomersPage() {
 
   useEffect(() => {
     loadCustomers();
+    fetchOptions();
   }, [sortOrder]);
 
   // URL 파라미터로 상태 필터 동기화
@@ -91,13 +98,13 @@ export function CustomersPage() {
       }
       // 상태 필터
       if (statusFilter && c.status_id !== statusFilter) return false;
-      // 상세 옵션 필터
-      if (optionFilter && c.option_id !== optionFilter) return false;
+      // 상세 옵션(현: 통신사) 필터
+      if (providerFilter && c.provider_id !== providerFilter) return false;
       // 담당자 필터
       if (assigneeFilter && c.assigned_to !== assigneeFilter) return false;
       return true;
     });
-  }, [customers, search, statusFilter, optionFilter, assigneeFilter]);
+  }, [customers, search, statusFilter, providerFilter, assigneeFilter]);
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,13 +115,17 @@ export function CustomersPage() {
       email: newCustomer.email || null,
       assigned_to: newCustomer.assigned_to || null,
       status_id: newCustomer.status_id || statusOptions.find(s => !s.parent_id)?.id || null,
-      option_id: newCustomer.option_id || null,
+      provider_id: newCustomer.provider_id || null,
+      plan_id: newCustomer.plan_id || null,
+      tv_id: newCustomer.tv_id || null,
+      speed_id: newCustomer.speed_id || null,
+      addons_json: newCustomer.addons_json,
       extra_fields: newCustomer.extra_fields,
     });
     setSaving(false);
     if (!error) {
       setShowAddModal(false);
-      setNewCustomer({ name: '', phone: '', email: '', assigned_to: '', status_id: '', option_id: '', extra_fields: {} });
+      setNewCustomer({ name: '', phone: '', email: '', assigned_to: '', status_id: '', provider_id: '', plan_id: '', tv_id: '', speed_id: '', addons_json: [], extra_fields: {} });
       loadCustomers();
     }
   };
@@ -148,7 +159,7 @@ export function CustomersPage() {
         />
         <select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setOptionFilter(''); }}
+          onChange={(e) => { setStatusFilter(e.target.value); }}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
         >
           <option value="">전체 상태</option>
@@ -156,18 +167,16 @@ export function CustomersPage() {
             <option key={s.id} value={s.id}>{s.label}</option>
           ))}
         </select>
-        {statusFilter && statusOptions.some(s => s.parent_id === statusFilter && s.is_active) && (
-          <select
-            value={optionFilter}
-            onChange={(e) => setOptionFilter(e.target.value)}
-            className="px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50 sm:w-32"
-          >
-            <option value="">전체 옵션</option>
-            {statusOptions.filter((s) => s.is_active && s.parent_id === statusFilter).map((s) => (
-              <option key={s.id} value={s.id}>{s.label}</option>
-            ))}
-          </select>
-        )}
+        <select
+          value={providerFilter}
+          onChange={(e) => setProviderFilter(e.target.value)}
+          className="px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50 sm:w-32"
+        >
+          <option value="">전체 통신사</option>
+          {options.filter((o) => o.category_code === 'provider' && o.is_active).map((o) => (
+            <option key={o.id} value={o.id}>{o.label}</option>
+          ))}
+        </select>
         <select
           value={assigneeFilter}
           onChange={(e) => setAssigneeFilter(e.target.value)}
@@ -222,7 +231,7 @@ export function CustomersPage() {
                       <td className="px-4 py-3 text-gray-600">{c.phone || '-'}</td>
                       <td className="px-4 py-3 text-gray-600">{c.email || '-'}</td>
                       <td className="px-4 py-3 text-gray-600">{assignedUser?.name || '-'}</td>
-                      <td className="px-4 py-3"><StatusBadge statusId={c.status_id} optionId={c.option_id} /></td>
+                      <td className="px-4 py-3"><StatusBadge statusId={c.status_id} /></td>
                       <td className="px-4 py-3 text-gray-500">
                         {format(new Date(c.created_at), 'yyyy.MM.dd', { locale: ko })}
                       </td>
@@ -295,7 +304,7 @@ export function CustomersPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">상태</label>
                 <select
                   value={newCustomer.status_id}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, status_id: e.target.value, option_id: '' })}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, status_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">선택</option>
@@ -305,21 +314,89 @@ export function CustomersPage() {
                 </select>
               </div>
 
-              {newCustomer.status_id && statusOptions.some(s => s.parent_id === newCustomer.status_id && s.is_active) && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">상세 옵션</label>
-                  <select
-                    value={newCustomer.option_id}
-                    onChange={(e) => setNewCustomer({ ...newCustomer, option_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50"
-                  >
-                    <option value="">옵션 선택</option>
-                    {statusOptions.filter((s) => s.is_active && s.parent_id === newCustomer.status_id).map((s) => (
-                      <option key={s.id} value={s.id}>{s.label}</option>
-                    ))}
-                  </select>
+              <div className="pt-2 border-t border-gray-100">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">통신 상품 정보</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">통신사</label>
+                    <select
+                      value={newCustomer.provider_id}
+                      onChange={(e) => setNewCustomer({ ...newCustomer, provider_id: e.target.value, plan_id: '', tv_id: '' })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">선택 안함</option>
+                      {options.filter((o) => o.category_code === 'provider' && o.is_active).map((o) => (
+                        <option key={o.id} value={o.id}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {newCustomer.provider_id && (
+                    <div className="grid grid-cols-2 gap-2 border bg-gray-50 border-gray-200 p-2 rounded-lg">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">요금제</label>
+                        <select
+                          value={newCustomer.plan_id}
+                          onChange={(e) => setNewCustomer({ ...newCustomer, plan_id: e.target.value })}
+                          className="w-full px-2 py-1.5 border border-indigo-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                        >
+                          <option value="">선택</option>
+                          {options.filter((o) => o.category_code === 'plan' && o.is_active && o.parent_id === newCustomer.provider_id).map((o) => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">TV 옵션</label>
+                        <select
+                          value={newCustomer.tv_id}
+                          onChange={(e) => setNewCustomer({ ...newCustomer, tv_id: e.target.value })}
+                          className="w-full px-2 py-1.5 border border-indigo-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                        >
+                          <option value="">선택 안함</option>
+                          {options.filter((o) => o.category_code === 'tv' && o.is_active && o.parent_id === newCustomer.provider_id).map((o) => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">인터넷 속도</label>
+                    <select
+                      value={newCustomer.speed_id}
+                      onChange={(e) => setNewCustomer({ ...newCustomer, speed_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">선택 안함</option>
+                      {options.filter((o) => o.category_code === 'speed' && o.is_active).map((o) => (
+                        <option key={o.id} value={o.id}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">부가 옵션 (다중 선택)</label>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {options.filter((o) => o.category_code === 'addon' && o.is_active).map((o) => (
+                         <label key={o.id} className="flex items-center gap-1 text-sm text-gray-700 cursor-pointer">
+                           <input 
+                             type="checkbox" 
+                             checked={newCustomer.addons_json.includes(o.id)}
+                             onChange={(e) => {
+                                if (e.target.checked) setNewCustomer({...newCustomer, addons_json: [...newCustomer.addons_json, o.id]});
+                                else setNewCustomer({...newCustomer, addons_json: newCustomer.addons_json.filter(id => id !== o.id)});
+                             }}
+                             className="rounded text-indigo-600 focus:ring-indigo-500 border-gray-300" 
+                           />
+                           {o.label}
+                         </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              )}
+              </div>
 
               {/* 동적 필드 */}
               {customFields.filter((f) => f.is_active).map((field) => (

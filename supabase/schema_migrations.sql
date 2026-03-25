@@ -1,26 +1,61 @@
 -- =============================================
--- 마이그레이션: 상태 및 옵션 관리에 Depth/종속성 추가
+-- 마이그레이션 V2: 통신/인터넷 판매용 계층형 옵션 모델 적용
+-- 기존 상태(Status) 관리와 상품(Product/Option) 관리를 명확히 분리합니다.
 -- =============================================
 
--- 1. status_options 테이블에 상위-하위 관계설정 컬럼 추가
-ALTER TABLE public.status_options 
-ADD COLUMN parent_id UUID REFERENCES public.status_options(id) ON DELETE CASCADE;
+-- 1. 옵션 카테고리 리스트 (확장성을 위한 기준 테이블)
+CREATE TABLE IF NOT EXISTS public.option_categories (
+  code TEXT PRIMARY KEY, -- 'provider', 'plan', 'tv', 'speed', 'addon' 등
+  name TEXT NOT NULL,    -- '통신사', '유심요금제', 'TV옵션', '인터넷속도', '기타옵션'
+  description TEXT,
+  sort_order INT DEFAULT 0
+);
 
--- 인덱스 추가 (부모 ID 검색 성능 향상)
-CREATE INDEX IF NOT EXISTS idx_status_options_parent_id ON public.status_options(parent_id);
+-- 기본 카테고리 데이터 세팅
+INSERT INTO public.option_categories (code, name, sort_order) VALUES
+  ('provider', '통신사', 1),
+  ('plan', '유심요금제', 2),
+  ('tv', 'TV옵션', 3),
+  ('speed', '인터넷속도', 4),
+  ('addon', '부가옵션(유/무)', 5)
+ON CONFLICT (code) DO NOTHING;
 
--- 2. customers 테이블에 옵션 선택 컬럼 추가
+-- 2. 실제 옵션 항목들을 담는 테이블 (트리/종속성 구조 지원)
+CREATE TABLE IF NOT EXISTS public.option_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  category_code TEXT NOT NULL REFERENCES public.option_categories(code) ON DELETE CASCADE,
+  parent_id UUID REFERENCES public.option_items(id) ON DELETE CASCADE, -- 핵심: SK(부모) -> 5G프라임(자식) 연결고리
+  label TEXT NOT NULL, -- 'SK', '5G 베이직', '100M', '와이파이 포함' 등
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 빠른 조회를 위한 인덱스
+CREATE INDEX IF NOT EXISTS idx_option_items_category ON public.option_items(category_code);
+CREATE INDEX IF NOT EXISTS idx_option_items_parent ON public.option_items(parent_id);
+
+-- 3. 고객 테이블 (customers) 업데이트
+-- 이전 시도했던 임시 컬럼(option_id)이 있다면 제거하고, 명시적인 통신 상품 컬럼으로 재구성
+ALTER TABLE public.customers DROP COLUMN IF EXISTS option_id;
+
 ALTER TABLE public.customers 
-ADD COLUMN option_id UUID REFERENCES public.status_options(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS provider_id UUID REFERENCES public.option_items(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES public.option_items(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS tv_id UUID REFERENCES public.option_items(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS speed_id UUID REFERENCES public.option_items(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS addons_json JSONB DEFAULT '[]'::jsonb; -- 유/무 옵션 등 다중선택 사항 보관용
 
--- 인덱스 추가
-CREATE INDEX IF NOT EXISTS idx_customers_option_id ON public.customers(option_id);
+-- 4. RLS (Row Level Security) 보안 정책
+ALTER TABLE public.option_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.option_items ENABLE ROW LEVEL SECURITY;
 
--- 3. RLS 업데이트 (필요시)
--- 관리자가 status_options의 모든 데이터를 관리할 권한은 이미 `status_options_manage_admin` 정책으로 처리되어 있으므로
--- 별도의 변경이 필요하지 않습니다.
+CREATE POLICY "categories_select_all" ON public.option_categories FOR SELECT TO authenticated USING (true);
+CREATE POLICY "categories_all_admin" ON public.option_categories FOR ALL TO authenticated USING (
+  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
+);
 
--- 4. status_history 테이블 업데이트 (부가적 옵션 변경 이력 추적용 - 선택사항)
-ALTER TABLE public.status_history 
-ADD COLUMN from_option_id UUID REFERENCES public.status_options(id) ON DELETE SET NULL,
-ADD COLUMN to_option_id UUID REFERENCES public.status_options(id) ON DELETE SET NULL;
+CREATE POLICY "items_select_all" ON public.option_items FOR SELECT TO authenticated USING (true);
+CREATE POLICY "items_all_admin" ON public.option_items FOR ALL TO authenticated USING (
+  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
+);

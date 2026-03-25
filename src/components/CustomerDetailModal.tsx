@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
 import { useStatusStore } from '../store/useStatusStore';
+import { useOptions } from '../hooks/useOptions';
 import { usePermission } from '../hooks/usePermission';
 import { StatusBadge } from './ui/StatusBadge';
 import { MemoTimeline } from './MemoTimeline';
@@ -18,6 +19,7 @@ interface Props {
 export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
   const { users, customFields } = useAppStore();
   const { items: statusOptions } = useStatusStore();
+  const { items: options, fetchOptions } = useOptions();
   const { currentUser } = usePermission();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -26,7 +28,8 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
-    name: '', phone: '', email: '', assigned_to: '', status_id: '', option_id: '',
+    name: '', phone: '', email: '', assigned_to: '', status_id: '',
+    provider_id: '', plan_id: '', tv_id: '', speed_id: '', addons_json: [] as string[],
     extra_fields: {} as Record<string, string>,
   });
 
@@ -46,7 +49,11 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
         email: data.email || '',
         assigned_to: data.assigned_to || '',
         status_id: data.status_id || '',
-        option_id: data.option_id || '',
+        provider_id: data.provider_id || '',
+        plan_id: data.plan_id || '',
+        tv_id: data.tv_id || '',
+        speed_id: data.speed_id || '',
+        addons_json: (data.addons_json || []) as string[],
         extra_fields: (data.extra_fields || {}) as Record<string, string>,
       });
     }
@@ -55,6 +62,7 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
 
   useEffect(() => {
     loadCustomer();
+    fetchOptions();
   }, [customerId]);
 
   // ESC 키로 닫기
@@ -71,13 +79,11 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
     if (!customer || !currentUser) return;
     setSaving(true);
 
-    if (form.status_id !== customer.status_id || form.option_id !== customer.option_id) {
+    if (form.status_id !== customer.status_id) {
       await supabase.from('status_history').insert({
         customer_id: customer.id,
         from_status_id: customer.status_id,
         to_status_id: form.status_id || null,
-        from_option_id: customer.option_id || null,
-        to_option_id: form.option_id || null,
         changed_by: currentUser.id,
       });
     }
@@ -90,7 +96,11 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
         email: form.email || null,
         assigned_to: form.assigned_to || null,
         status_id: form.status_id || null,
-        option_id: form.option_id || null,
+        provider_id: form.provider_id || null,
+        plan_id: form.plan_id || null,
+        tv_id: form.tv_id || null,
+        speed_id: form.speed_id || null,
+        addons_json: form.addons_json,
         extra_fields: form.extra_fields,
       })
       .eq('id', customer.id);
@@ -134,7 +144,7 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <div className="flex items-center gap-3">
                 <h2 className="text-xl font-bold text-gray-900">{customer.name}</h2>
-                <StatusBadge statusId={customer.status_id} optionId={customer.option_id} />
+                <StatusBadge statusId={customer.status_id} />
               </div>
               <div className="flex items-center gap-2">
                 <PermissionGuard action="edit">
@@ -218,7 +228,7 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
                       <label className="block text-xs font-medium text-gray-500 mb-1">상태</label>
                       <select
                         value={form.status_id}
-                        onChange={(e) => setForm({ ...form, status_id: e.target.value, option_id: '' })}
+                        onChange={(e) => setForm({ ...form, status_id: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="">미지정</option>
@@ -228,21 +238,89 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
                       </select>
                     </div>
 
-                    {form.status_id && statusOptions.some(s => s.parent_id === form.status_id && s.is_active) && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">상세 옵션</label>
-                        <select
-                          value={form.option_id}
-                          onChange={(e) => setForm({ ...form, option_id: e.target.value })}
-                          className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50"
-                        >
-                          <option value="">옵션 선택</option>
-                          {statusOptions.filter((s) => s.is_active && s.parent_id === form.status_id).map((s) => (
-                            <option key={s.id} value={s.id}>{s.label}</option>
-                          ))}
-                        </select>
+                    <div className="pt-2 border-t border-gray-100">
+                      <h4 className="text-xs font-semibold text-gray-900 mb-2">통신 상품 정보</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">통신사</label>
+                          <select
+                            value={form.provider_id}
+                            onChange={(e) => setForm({ ...form, provider_id: e.target.value, plan_id: '', tv_id: '' })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                          >
+                            <option value="">선택 안함</option>
+                            {options.filter((o) => o.category_code === 'provider' && o.is_active).map((o) => (
+                              <option key={o.id} value={o.id}>{o.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        
+                        {form.provider_id && (
+                          <div className="grid grid-cols-2 gap-2 border bg-gray-50 border-gray-200 p-2 rounded-lg">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">요금제 (종속)</label>
+                              <select
+                                value={form.plan_id}
+                                onChange={(e) => setForm({ ...form, plan_id: e.target.value })}
+                                className="w-full px-2 py-1.5 border border-indigo-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                              >
+                                <option value="">선택</option>
+                                {options.filter((o) => o.category_code === 'plan' && o.is_active && o.parent_id === form.provider_id).map((o) => (
+                                  <option key={o.id} value={o.id}>{o.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">TV 옵션 (종속)</label>
+                              <select
+                                value={form.tv_id}
+                                onChange={(e) => setForm({ ...form, tv_id: e.target.value })}
+                                className="w-full px-2 py-1.5 border border-indigo-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                              >
+                                <option value="">선택 안함</option>
+                                {options.filter((o) => o.category_code === 'tv' && o.is_active && o.parent_id === form.provider_id).map((o) => (
+                                  <option key={o.id} value={o.id}>{o.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">인터넷 속도</label>
+                          <select
+                            value={form.speed_id}
+                            onChange={(e) => setForm({ ...form, speed_id: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                          >
+                            <option value="">선택 안함</option>
+                            {options.filter((o) => o.category_code === 'speed' && o.is_active).map((o) => (
+                              <option key={o.id} value={o.id}>{o.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">부가 옵션 (다중 선택)</label>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            {options.filter((o) => o.category_code === 'addon' && o.is_active).map((o) => (
+                               <label key={o.id} className="flex items-center gap-1 text-sm text-gray-700 cursor-pointer">
+                                 <input 
+                                   type="checkbox" 
+                                   checked={form.addons_json.includes(o.id)}
+                                   onChange={(e) => {
+                                      if (e.target.checked) setForm({...form, addons_json: [...form.addons_json, o.id]});
+                                      else setForm({...form, addons_json: form.addons_json.filter(id => id !== o.id)});
+                                   }}
+                                   className="rounded text-indigo-600 focus:ring-indigo-500 border-gray-300" 
+                                 />
+                                 {o.label}
+                               </label>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    )}
+                    </div>
 
                     {customFields.filter((f) => f.is_active).map((field) => (
                       <div key={field.id}>
@@ -311,6 +389,30 @@ export function CustomerDetailModal({ customerId, onClose, onDeleted }: Props) {
                       <dt className="text-xs font-medium text-gray-500">등록일</dt>
                       <dd className="text-sm text-gray-900">
                         {new Date(customer.created_at).toLocaleDateString('ko-KR')}
+                      </dd>
+                    </div>
+
+                    <div className="pt-2 mt-2 border-t border-gray-100">
+                      <dt className="text-xs font-medium text-gray-500 mb-1">통신 상품 정보</dt>
+                      <dd className="text-sm text-gray-900 space-y-1">
+                        {options.find(o => o.id === customer.provider_id) ? (
+                            <p><span className="text-gray-500 mr-2">통신사:</span> {options.find(o => o.id === customer.provider_id)?.label}</p>
+                        ) : null}
+                        {options.find(o => o.id === customer.plan_id) ? (
+                            <p><span className="text-gray-500 mr-2">요금제:</span> {options.find(o => o.id === customer.plan_id)?.label}</p>
+                        ) : null}
+                        {options.find(o => o.id === customer.tv_id) ? (
+                            <p><span className="text-gray-500 mr-2">TV:</span> {options.find(o => o.id === customer.tv_id)?.label}</p>
+                        ) : null}
+                        {options.find(o => o.id === customer.speed_id) ? (
+                            <p><span className="text-gray-500 mr-2">속도:</span> {options.find(o => o.id === customer.speed_id)?.label}</p>
+                        ) : null}
+                        {customer.addons_json && customer.addons_json.length > 0 ? (
+                            <p><span className="text-gray-500 mr-2">부가서비스:</span> {customer.addons_json.map(id => options.find(o => o.id === id)?.label).filter(Boolean).join(', ')}</p>
+                        ) : null}
+                        {!customer.provider_id && !customer.plan_id && !customer.tv_id && !customer.speed_id && (!customer.addons_json || customer.addons_json.length === 0) && (
+                            <p className="text-gray-400">등록된 상품 없음</p>
+                        )}
                       </dd>
                     </div>
                     {customFields.filter((f) => f.is_active).map((field) => {

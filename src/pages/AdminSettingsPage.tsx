@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
 import { StatusManager } from '../components/admin/StatusManager';
+import { ProductLayout } from '../components/admin/ProductManagement/ProductLayout';
 import type { CustomField, Role, ViewScope } from '../types';
 
-type Tab = 'fields' | 'statuses' | 'accounts';
+type Tab = 'fields' | 'statuses' | 'products' | 'accounts';
 
 export function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('statuses');
@@ -62,6 +63,7 @@ export function AdminSettingsPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'statuses', label: '상태값 관리' },
+    { key: 'products', label: '통신 상품 관리' },
     { key: 'fields', label: '동적 필드 관리' },
     { key: 'accounts', label: '계정 & 권한' },
   ];
@@ -93,6 +95,14 @@ export function AdminSettingsPage() {
           <h2 className="text-lg font-semibold text-gray-900">상태 & 옵션 관리</h2>
           <p className="text-sm text-gray-500">고객의 진행 상태(대분류) 및 하위 옵션(중분류)을 설정합니다.</p>
           <StatusManager />
+        </div>
+      )}
+
+      {/* ===== 통신 상품 관리 탭 ===== */}
+      {activeTab === 'products' && (
+        <div className="space-y-4">
+           {/* ProductLayout 컴포넌트 내부에서 컨테이너 스타일링을 포함하고 있음 */}
+           <ProductLayout />
         </div>
       )}
 

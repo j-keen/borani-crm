@@ -52,22 +52,61 @@ export function useAuth() {
       return;
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+    let mounted = true;
+
+    async function initializeSession() {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
         if (session?.user) {
           const profile = await getOrCreateProfile(session.user);
-          if (profile) {
+          if (mounted && profile) {
             setCurrentUser(profile);
-            loadAppData().catch(console.error);
+            await loadAppData();
+          }
+        }
+      } catch (err) {
+        console.error('Session initialization error:', err);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    // 초기 세션 명시적 확인 (무한 로딩 방지)
+    initializeSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        // INITIAL_SESSION은 initializeSession에서 이미 처리됨
+        if (event === 'INITIAL_SESSION') return;
+
+        if (event === 'SIGNED_OUT') {
+          setCurrentUser(null);
+          return;
+        }
+
+        if (session?.user) {
+          // 토큰 갱신(TOKEN_REFRESHED) 시에는 기존 정보를 유지하여 불필요한 네트워크 요청 및 튕김 방지
+          if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+            const profile = await getOrCreateProfile(session.user);
+            if (profile) {
+              setCurrentUser(profile);
+              loadAppData().catch(console.error);
+            }
           }
         } else {
           setCurrentUser(null);
         }
-        setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [setCurrentUser, loadAppData]);
 
   const signIn = async (email: string, password: string) => {

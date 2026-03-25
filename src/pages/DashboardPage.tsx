@@ -29,69 +29,72 @@ export function DashboardPage() {
 
   useEffect(() => {
     const loadDashboard = async () => {
-      // 1. 상태별 고객 수
-      const { data: customers } = await supabase.from('customers').select('id, status_id, assigned_to');
+      try {
+        // 1. 상태별 고객 수
+        const { data: customers } = await supabase.from('customers').select('id, status_id, assigned_to');
 
-      if (customers) {
-        const counts: Record<string, number> = {};
-        customers.forEach((c) => {
-          const sid = c.status_id || 'none';
-          counts[sid] = (counts[sid] || 0) + 1;
-        });
-        setStatusCounts(
-          Object.entries(counts).map(([status_id, count]) => ({ status_id, count }))
-        );
+        if (customers) {
+          const counts: Record<string, number> = {};
+          customers.forEach((c) => {
+            const sid = c.status_id || 'none';
+            counts[sid] = (counts[sid] || 0) + 1;
+          });
+          setStatusCounts(
+            Object.entries(counts).map(([status_id, count]) => ({ status_id, count }))
+          );
 
-        // 3. 담당자별 처리 현황
-        const completedStatusIds = statusOptions
-          .filter((s) => s.label === '완료' || s.label === '설치완료')
-          .map((s) => s.id);
+          // 3. 담당자별 처리 현황
+          const completedStatusIds = statusOptions
+            .filter((s) => s.label === '완료' || s.label === '설치완료')
+            .map((s) => s.id);
 
-        const statsMap = new Map<string, { total: number; completed: number }>();
-        customers.forEach((c) => {
-          if (!c.assigned_to) return;
-          const stat = statsMap.get(c.assigned_to) || { total: 0, completed: 0 };
-          stat.total++;
-          if (c.status_id && completedStatusIds.includes(c.status_id)) stat.completed++;
-          statsMap.set(c.assigned_to, stat);
-        });
+          const statsMap = new Map<string, { total: number; completed: number }>();
+          customers.forEach((c) => {
+            if (!c.assigned_to) return;
+            const stat = statsMap.get(c.assigned_to) || { total: 0, completed: 0 };
+            stat.total++;
+            if (c.status_id && completedStatusIds.includes(c.status_id)) stat.completed++;
+            statsMap.set(c.assigned_to, stat);
+          });
 
-        setAssigneeStats(
-          Array.from(statsMap.entries())
-            .map(([userId, stat]) => ({
-              user: users.find((u) => u.id === userId) || { id: userId, name: '알 수 없음', email: '', role: 'staff' as const, view_scope: 'own' as const, created_at: '', updated_at: '' },
-              ...stat,
-            }))
-            .sort((a, b) => b.total - a.total)
-        );
+          setAssigneeStats(
+            Array.from(statsMap.entries())
+              .map(([userId, stat]) => ({
+                user: users.find((u) => u.id === userId) || { id: userId, name: '알 수 없음', email: '', role: 'staff' as const, view_scope: 'own' as const, created_at: '', updated_at: '' },
+                ...stat,
+              }))
+              .sort((a, b) => b.total - a.total)
+          );
+        }
+
+        // 2. 최근 7일 상담 활동
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const { data: memos } = await supabase
+          .from('memos')
+          .select('*, author:users!memos_author_id_fkey(id, name)')
+          .gte('created_at', sevenDaysAgo.toISOString())
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (memos && memos.length > 0) {
+          const customerIds = [...new Set(memos.map((m) => m.customer_id))];
+          const { data: customerNames } = await supabase
+            .from('customers')
+            .select('id, name')
+            .in('id', customerIds);
+
+          const nameMap = new Map(customerNames?.map((c) => [c.id, c.name]) || []);
+          setRecentMemos(
+            memos.map((m) => ({ ...m, customer_name: nameMap.get(m.customer_id) || '알 수 없음' }))
+          );
+        }
+      } catch (e) {
+        console.error('대시보드 로딩 실패:', e);
+      } finally {
+        setLoading(false);
       }
-
-      // 2. 최근 7일 상담 활동
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-      const { data: memos } = await supabase
-        .from('memos')
-        .select('*, author:users!memos_author_id_fkey(id, name)')
-        .gte('created_at', sevenDaysAgo.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (memos) {
-        // 고객 이름 가져오기
-        const customerIds = [...new Set(memos.map((m) => m.customer_id))];
-        const { data: customerNames } = await supabase
-          .from('customers')
-          .select('id, name')
-          .in('id', customerIds);
-
-        const nameMap = new Map(customerNames?.map((c) => [c.id, c.name]) || []);
-        setRecentMemos(
-          memos.map((m) => ({ ...m, customer_name: nameMap.get(m.customer_id) || '알 수 없음' }))
-        );
-      }
-
-      setLoading(false);
     };
 
     loadDashboard();

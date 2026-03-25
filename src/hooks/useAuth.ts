@@ -50,6 +50,13 @@ export function useAuth() {
   }, [setStatusOptions, setCustomFields, setUsers]);
 
   useEffect(() => {
+    let didTimeout = false;
+    const timeout = setTimeout(() => {
+      didTimeout = true;
+      console.warn('Auth 초기화 타임아웃 (5초)');
+      setLoading(false);
+    }, 5000);
+
     const init = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -63,7 +70,8 @@ export function useAuth() {
       } catch (e) {
         console.error('Auth 초기화 실패:', e);
       } finally {
-        setLoading(false);
+        clearTimeout(timeout);
+        if (!didTimeout) setLoading(false);
       }
     };
     init();

@@ -106,6 +106,16 @@ CREATE POLICY "users_update_self" ON public.users
   FOR UPDATE TO authenticated
   USING (id = auth.uid());
 
+-- admin은 모든 사용자 정보 수정 가능
+CREATE POLICY "users_update_admin" ON public.users
+  FOR UPDATE TO authenticated
+  USING (
+    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
+  );
+
 CREATE POLICY "users_insert_admin" ON public.users
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -272,3 +282,33 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- =============================================
+-- 7. 사용자 테이블 설정 보관 테이블
+-- =============================================
+CREATE TABLE public.user_table_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  page_key TEXT NOT NULL,
+  settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, page_key)
+);
+
+ALTER TABLE public.user_table_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "user_settings_select" ON public.user_table_settings
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "user_settings_insert" ON public.user_table_settings
+  FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "user_settings_update" ON public.user_table_settings
+  FOR UPDATE TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE TRIGGER user_table_settings_updated_at
+  BEFORE UPDATE ON public.user_table_settings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();

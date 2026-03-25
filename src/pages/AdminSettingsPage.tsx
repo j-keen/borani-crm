@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store/appStore';
 import { StatusManager } from '../components/admin/StatusManager';
@@ -9,7 +9,14 @@ type Tab = 'fields' | 'statuses' | 'products' | 'accounts';
 
 export function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('statuses');
-  const { customFields, users, setCustomFields, setUsers } = useAppStore();
+  const { currentUser, customFields, users, setCustomFields, setUsers } = useAppStore();
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   // ===================== 상태값 관리 =====================
   // 상태관리는 StatusManager 컴포넌트로 분리되었습니다.
@@ -57,8 +64,13 @@ export function AdminSettingsPage() {
 
   // ===================== 계정 관리 =====================
   const handleUpdateUser = async (userId: string, updates: { role?: Role; view_scope?: ViewScope }) => {
-    await supabase.from('users').update(updates).eq('id', userId);
+    const { error } = await supabase.from('users').update(updates).eq('id', userId);
+    if (error) {
+      setToast({ message: '권한 수정에 실패했습니다: ' + error.message, type: 'error' });
+      return;
+    }
     setUsers(users.map((u) => (u.id === userId ? { ...u, ...updates } : u)));
+    setToast({ message: '권한이 성공적으로 수정되었습니다.', type: 'success' });
   };
 
   const tabs: { key: Tab; label: string }[] = [
@@ -186,36 +198,53 @@ export function AdminSettingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
-                  <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-2 font-medium text-gray-900">{user.name}</td>
-                    <td className="py-3 px-2 text-gray-600">{user.email}</td>
-                    <td className="py-3 px-2">
-                      <select
-                        value={user.role}
-                        onChange={(e) => handleUpdateUser(user.id, { role: e.target.value as Role })}
-                        className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="admin">최고관리자</option>
-                        <option value="staff">일반직원</option>
-                        <option value="viewer">열람전용</option>
-                      </select>
-                    </td>
-                    <td className="py-3 px-2">
-                      <select
-                        value={user.view_scope}
-                        onChange={(e) => handleUpdateUser(user.id, { view_scope: e.target.value as ViewScope })}
-                        className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="all">전체 고객</option>
-                        <option value="own">본인 담당만</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
+                {users.map((user) => {
+                  const isSelf = currentUser?.id === user.id;
+                  return (
+                    <tr key={user.id} className={`border-b border-gray-100 ${isSelf ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}>
+                      <td className="py-3 px-2 font-medium text-gray-900">
+                        {user.name}
+                        {isSelf && <span className="ml-2 text-xs text-indigo-500 font-normal">(나)</span>}
+                      </td>
+                      <td className="py-3 px-2 text-gray-600">{user.email}</td>
+                      <td className="py-3 px-2">
+                        <select
+                          value={user.role}
+                          disabled={isSelf}
+                          onChange={(e) => handleUpdateUser(user.id, { role: e.target.value as Role })}
+                          className={`px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 ${isSelf ? 'opacity-50 cursor-not-allowed bg-gray-100' : ''}`}
+                        >
+                          <option value="admin">최고관리자</option>
+                          <option value="staff">일반직원</option>
+                          <option value="viewer">열람전용</option>
+                        </select>
+                      </td>
+                      <td className="py-3 px-2">
+                        <select
+                          value={user.view_scope}
+                          disabled={isSelf}
+                          onChange={(e) => handleUpdateUser(user.id, { view_scope: e.target.value as ViewScope })}
+                          className={`px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 ${isSelf ? 'opacity-50 cursor-not-allowed bg-gray-100' : ''}`}
+                        >
+                          <option value="all">전체 고객</option>
+                          <option value="own">본인 담당만</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* 토스트 알림 */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg text-white text-sm z-50 transition-opacity ${
+          toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+        }`}>
+          {toast.message}
         </div>
       )}
     </div>

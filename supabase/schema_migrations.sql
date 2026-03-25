@@ -59,3 +59,35 @@ CREATE POLICY "items_select_all" ON public.option_items FOR SELECT TO authentica
 CREATE POLICY "items_all_admin" ON public.option_items FOR ALL TO authenticated USING (
   EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
 );
+
+-- =============================================
+-- 마이그레이션 V3: 동적 데이터 그리드 사용자 설정 저장 테이블
+-- =============================================
+CREATE TABLE IF NOT EXISTS public.user_table_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  page_key TEXT NOT NULL,
+  settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, page_key)
+);
+
+ALTER TABLE public.user_table_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "user_settings_select" ON public.user_table_settings
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "user_settings_insert" ON public.user_table_settings
+  FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "user_settings_update" ON public.user_table_settings
+  FOR UPDATE TO authenticated
+  USING (user_id = auth.uid());
+
+-- updated_at 트리거
+DROP TRIGGER IF EXISTS user_table_settings_updated_at ON public.user_table_settings;
+CREATE TRIGGER user_table_settings_updated_at
+  BEFORE UPDATE ON public.user_table_settings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();

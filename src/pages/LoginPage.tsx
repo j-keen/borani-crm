@@ -18,7 +18,7 @@ export function LoginPage() {
     if (isSignUp) {
       const { error } = await signUp(email, password, name);
       if (error) setError(error.message);
-      else setError('가입 확인 이메일을 확인해주세요.');
+      // 이메일 인증 비활성화 시 가입 즉시 자동 로그인됨 (onAuthStateChange가 처리)
     } else {
       const { error } = await signIn(email, password);
       if (error) setError('이메일 또는 비밀번호가 올바르지 않습니다.');

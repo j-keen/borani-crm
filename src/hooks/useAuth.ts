@@ -96,17 +96,27 @@ export function useAuth() {
   }, [setCurrentUser, loadAppData]);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    try {
+      const { error } = await Promise.race([
+        supabase.auth.signInWithPassword({ email, password }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('로그인 요청 시간 초과 — Supabase 연결을 확인해주세요.')), 10000)),
+      ]);
+      return { error };
+    } catch (e: unknown) {
+      return { error: e instanceof Error ? e : new Error('알 수 없는 오류') };
+    }
   };
 
   const signUp = async (email: string, password: string, name: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name } },
-    });
-    return { error };
+    try {
+      const { error } = await Promise.race([
+        supabase.auth.signUp({ email, password, options: { data: { name } } }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('회원가입 요청 시간 초과 — Supabase 연결을 확인해주세요.')), 10000)),
+      ]);
+      return { error };
+    } catch (e: unknown) {
+      return { error: e instanceof Error ? e : new Error('알 수 없는 오류') };
+    }
   };
 
   const signOut = async () => {
